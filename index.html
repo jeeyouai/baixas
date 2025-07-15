@@ -1,4 +1,4 @@
-<!-- Salve este arquivo como index.html no mesmo diretório de csvjson.json -->
+<!-- Salve este arquivo como index.html no mesmo diretório de baixas.json -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -15,7 +15,7 @@
   <div id="form" class="grid gap-2 md:grid-cols-[2fr_1fr_auto] items-end mb-6">
     <div>
       <label class="block text-sm font-medium">Produto</label>
-      <input id="productInput" type="text" placeholder="Código ou parte da descrição…" class="w-full border rounded p-2">
+      <input id="productInput" type="text" placeholder="Código (MAN-****) ou parte da descrição…" class="w-full border rounded p-2">
       <p id="selectedInfo" class="text-sm text-gray-600 mt-1 hidden"></p>
     </div>
     <div>
@@ -52,147 +52,163 @@
 
   <script>
   // ---------- Helpers ----------
-  function fmtDate(d){return d.toISOString().slice(0,10);} // AAAA-MM-DD
-  function weekStart(date){
-    const d=new Date(date);
-    const day=d.getDay(); // 0 = domingo
+  const fmtDate = d => d.toISOString().slice(0,10); // AAAA-MM-DD
+  const weekStart = date => {
+    const d = new Date(date);
+    const day = d.getDay(); // 0 = domingo
     d.setHours(0,0,0,0);
-    d.setDate(d.getDate()-day);
+    d.setDate(d.getDate() - day);
     return d;
-  }
-  function loadWithdrawals(){return JSON.parse(localStorage.getItem('withdrawals')||'[]');}
-  function saveWithdrawals(arr){localStorage.setItem('withdrawals',JSON.stringify(arr));}
+  };
+  const loadWithdrawals = () => JSON.parse(localStorage.getItem('withdrawals') || '[]');
+  const saveWithdrawals = arr => localStorage.setItem('withdrawals', JSON.stringify(arr));
 
   // ---------- Estado ----------
-  let items=[];
-  let selectedItem=null;
-  const withdrawals=loadWithdrawals();
-  const today=new Date();
-  const start=weekStart(today);
-  const end=new Date(start);end.setDate(start.getDate()+6);
+  let items = [];
+  let selectedItem = null;
+  const withdrawals = loadWithdrawals();
+  const today = new Date();
+  const start = weekStart(today);
+  const end = new Date(start); end.setDate(start.getDate() + 6);
 
   // ---------- Elementos DOM ----------
-  const productInput=document.getElementById('productInput');
-  const qtyInput=document.getElementById('qtyInput');
-  const selectedInfo=document.getElementById('selectedInfo');
-  const todayList=document.getElementById('todayList');
-  const todayStr=document.getElementById('todayStr');
-  const periodStr=document.getElementById('periodStr');
-  const weekTableBody=document.querySelector('#weekTable tbody');
-  const csvBtn=document.getElementById('csvBtn');
-  const clearBtn=document.getElementById('clearBtn');
+  const productInput = document.getElementById('productInput');
+  const qtyInput = document.getElementById('qtyInput');
+  const selectedInfo = document.getElementById('selectedInfo');
+  const todayList = document.getElementById('todayList');
+  const todayStr = document.getElementById('todayStr');
+  const periodStr = document.getElementById('periodStr');
+  const weekTableBody = document.querySelector('#weekTable tbody');
+  const csvBtn = document.getElementById('csvBtn');
+  const clearBtn = document.getElementById('clearBtn');
 
   // ---------- Carregar catálogo ----------
+  /*
+     O arquivo baixas.json deve ter um array de objetos, onde cada objeto
+     possui as chaves:
+       "Número do item" (ex.: MAN-0001)
+       "Nome do produto" (descrição)
+       "Localização" (opcional na interface atual)
+       "Quantidade física disponível" (estoque)
+  */
   fetch('baixas.json')
-    .then(r=>r.json())
-    .then(data=>{items=data;})
-    .catch(err=>console.error('Erro ao carregar csvjson.json',err));
+    .then(r => r.json())
+    .then(data => {
+      // Converte para um formato interno sem espaços no nome das propriedades
+      items = data.map(it => ({
+        code: it["Número do item"],
+        description: it["Nome do produto"],
+        location: it["Localização"],
+        stock: it["Quantidade física disponível"]
+      }));
+    })
+    .catch(err => console.error('Erro ao carregar baixas.json', err));
 
   // ---------- Busca de produtos ----------
-  productInput.addEventListener('input',()=>{
-    const q=productInput.value.trim().toLowerCase();
-    if(!q){selectedItem=null;selectedInfo.classList.add('hidden');return;}
-    selectedItem=items.find(it=>
-      it.code.toLowerCase()===q ||
-      it.description.toLowerCase().includes(q)
+  productInput.addEventListener('input', () => {
+    const q = productInput.value.trim().toLowerCase();
+    if (!q) { selectedItem = null; selectedInfo.classList.add('hidden'); return; }
+    selectedItem = items.find(it =>
+      (it.code && it.code.toLowerCase() === q) ||
+      (it.description && it.description.toLowerCase().includes(q))
     );
-    if(selectedItem){
-      selectedInfo.textContent=`Selecionado: ${selectedItem.description} (${selectedItem.code})`;
+    if (selectedItem) {
+      selectedInfo.textContent = `Selecionado: ${selectedItem.description} (${selectedItem.code}) — Estoque: ${selectedItem.stock} em ${selectedItem.location}`;
       selectedInfo.classList.remove('hidden');
-    }else{
+    } else {
       selectedInfo.classList.add('hidden');
     }
   });
 
   // ---------- Adicionar retirada ----------
-  document.getElementById('addBtn').addEventListener('click',()=>{
-    const qty=parseInt(qtyInput.value,10);
-    if(!selectedItem||!qty||qty<=0){return;}
-    withdrawals.push({code:selectedItem.code,desc:selectedItem.description,qty,date:Date.now()});
+  document.getElementById('addBtn').addEventListener('click', () => {
+    const qty = parseInt(qtyInput.value, 10);
+    if (!selectedItem || !qty || qty <= 0) { return; }
+    withdrawals.push({ code: selectedItem.code, desc: selectedItem.description, qty, date: Date.now() });
     saveWithdrawals(withdrawals);
-    selectedItem=null;productInput.value='';selectedInfo.classList.add('hidden');qtyInput.value=1;
+    selectedItem = null; productInput.value = ''; selectedInfo.classList.add('hidden'); qtyInput.value = 1;
     render();
   });
 
   // ---------- Renderização ----------
-  function render(){
+  function render() {
     // Hoje
-    todayStr.textContent=fmtDate(today);
-    todayList.innerHTML='';
-    const todayEntries=withdrawals.filter(w=>fmtDate(new Date(w.date))===fmtDate(today));
-    if(todayEntries.length===0){
-      todayList.innerHTML='<li class="p-2 text-sm text-gray-500">Nenhuma retirada registrada hoje.</li>';
-    }else{
-      todayEntries.forEach(w=>{
-        const li=document.createElement('li');
-        li.className='p-2 text-sm';
-        li.textContent=`${w.qty}× ${w.desc} (${w.code})`;
+    todayStr.textContent = fmtDate(today);
+    todayList.innerHTML = '';
+    const todayEntries = withdrawals.filter(w => fmtDate(new Date(w.date)) === fmtDate(today));
+    if (todayEntries.length === 0) {
+      todayList.innerHTML = '<li class="p-2 text-sm text-gray-500">Nenhuma retirada registrada hoje.</li>';
+    } else {
+      todayEntries.forEach(w => {
+        const li = document.createElement('li');
+        li.className = 'p-2 text-sm';
+        li.textContent = `${w.qty}× ${w.desc} (${w.code})`;
         todayList.appendChild(li);
       });
     }
 
     // Resumo semanal
-    periodStr.textContent=`${fmtDate(start)} → ${fmtDate(end)}`;
-    weekTableBody.innerHTML='';
-    const weekEntries=withdrawals.filter(w=>{
-      const d=new Date(w.date);return d>=start&&d<=end;
+    periodStr.textContent = `${fmtDate(start)} → ${fmtDate(end)}`;
+    weekTableBody.innerHTML = '';
+    const weekEntries = withdrawals.filter(w => {
+      const d = new Date(w.date); return d >= start && d <= end;
     });
-    const totals={};
-    weekEntries.forEach(w=>{
-      if(!totals[w.code])totals[w.code]={desc:w.desc,qty:0};
-      totals[w.code].qty+=Number(w.qty);
+    const totals = {};
+    weekEntries.forEach(w => {
+      if (!totals[w.code]) totals[w.code] = { desc: w.desc, qty: 0 };
+      totals[w.code].qty += Number(w.qty);
     });
-    const codes=Object.keys(totals);
-    if(codes.length===0){
-      weekTableBody.innerHTML='<tr><td colspan="3" class="p-2 text-center text-gray-500">Nenhuma baixa esta semana.</td></tr>';
-    }else{
-      codes.forEach(code=>{
-        const tr=document.createElement('tr');
-        tr.innerHTML=`<td class=\"p-2 border\">${code}</td><td class=\"p-2 border\">${totals[code].desc}</td><td class=\"p-2 border text-center\">${totals[code].qty}</td>`;
+    const codes = Object.keys(totals);
+    if (codes.length === 0) {
+      weekTableBody.innerHTML = '<tr><td colspan="3" class="p-2 text-center text-gray-500">Nenhuma baixa esta semana.</td></tr>';
+    } else {
+      codes.forEach(code => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td class=\"p-2 border\">${code}</td><td class=\"p-2 border\">${totals[code].desc}</td><td class=\"p-2 border text-center\">${totals[code].qty}</td>`;
         weekTableBody.appendChild(tr);
       });
     }
-    csvBtn.disabled=codes.length===0;
-    clearBtn.disabled=codes.length===0;
+    csvBtn.disabled = codes.length === 0;
+    clearBtn.disabled = codes.length === 0;
   }
   render();
 
   // ---------- Gerar CSV ----------
-  csvBtn.addEventListener('click',()=>{
-    const weekEntries=withdrawals.filter(w=>{
-      const d=new Date(w.date);return d>=start&&d<=end;
+  csvBtn.addEventListener('click', () => {
+    const weekEntries = withdrawals.filter(w => {
+      const d = new Date(w.date); return d >= start && d <= end;
     });
-    const sums={};
-    weekEntries.forEach(w=>{
-      sums[w.code]=(sums[w.code]||0)+Number(w.qty);
-      sums[`__desc_${w.code}`]=w.desc;
+    const sums = {};
+    weekEntries.forEach(w => {
+      sums[w.code] = (sums[w.code] || 0) + Number(w.qty);
+      sums[`__desc_${w.code}`] = w.desc;
     });
-    const headers=['Código','Descrição','Total na Semana',`Período: ${fmtDate(start)} a ${fmtDate(end)}`];
-    const rows=Object.keys(sums).filter(k=>!k.startsWith('__desc_')).map(code=>[code,sums[`__desc_${code}`],sums[code]]);
-    const csv=[headers.join(';'),...rows.map(r=>r.join(';'))].join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;a.download=`baixas_${fmtDate(start)}_to_${fmtDate(end)}.csv`;a.click();
+    const headers = ['Código', 'Descrição', 'Total na Semana', `Período: ${fmtDate(start)} a ${fmtDate(end)}`];
+    const rows = Object.keys(sums).filter(k => !k.startsWith('__desc_')).map(code => [code, sums[`__desc_${code}`], sums[code]]);
+    const csv = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `baixas_${fmtDate(start)}_to_${fmtDate(end)}.csv`; a.click();
     URL.revokeObjectURL(url);
   });
 
   // ---------- Limpar semana ----------
-  clearBtn.addEventListener('click',()=>{
-    const remain=withdrawals.filter(w=>new Date(w.date)<start);
-    localStorage.setItem('withdrawals',JSON.stringify(remain));
-    withdrawals.length=0;withdrawals.push(...remain);
+  clearBtn.addEventListener('click', () => {
+    const remain = withdrawals.filter(w => new Date(w.date) < start);
+    localStorage.setItem('withdrawals', JSON.stringify(remain));
+    withdrawals.length = 0; withdrawals.push(...remain);
     render();
   });
 
   // ---------- Geração automática domingo 00h0x ----------
-  (function autoGen(){
-    const now=new Date();
-    if(now.getDay()===0&&now.getHours()===0&&now.getMinutes()<10){
-      const flag=`reportDone_${fmtDate(start)}`;
-      if(!localStorage.getItem(flag)){
+  (function autoGen() {
+    const now = new Date();
+    if (now.getDay() === 0 && now.getHours() === 0 && now.getMinutes() < 10) {
+      const flag = `reportDone_${fmtDate(start)}`;
+      if (!localStorage.getItem(flag)) {
         csvBtn.click();
-        localStorage.setItem(flag,'true');
+        localStorage.setItem(flag, 'true');
       }
     }
   })();
