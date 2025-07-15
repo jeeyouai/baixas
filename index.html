@@ -44,6 +44,27 @@
       box-sizing: border-box;
     }
 
+    .dropdown {
+      border: 1px solid #ccc;
+      border-top: none;
+      max-height: 150px;
+      overflow-y: auto;
+      position: absolute;
+      width: calc(100% - 22px);
+      background-color: white;
+      z-index: 1000;
+      display: none;
+    }
+
+    .dropdown div {
+      padding: 8px;
+      cursor: pointer;
+    }
+
+    .dropdown div:hover {
+      background-color: #f0f0f0;
+    }
+
     button {
       background-color: #005A4B;
       color: white;
@@ -93,7 +114,7 @@
 
     .info {
       font-size: 14px;
-      color: #333;
+      color: #000;
       margin-top: 5px;
     }
 
@@ -108,7 +129,10 @@
     <h1>Controle de Baixas (Dom‑Sáb)</h1>
 
     <label for="productInput">Produto</label>
-    <input id="productInput" type="text" placeholder="Código (MAN-****) ou parte da descrição…">
+    <div style="position: relative;">
+      <input id="productInput" type="text" placeholder="Código (MAN-****) ou parte da descrição…">
+      <div id="suggestions" class="dropdown"></div>
+    </div>
     <p id="selectedInfo" class="info" style="display: none;"></p>
 
     <label for="qtyInput">Quantidade</label>
@@ -137,12 +161,7 @@
 
   <script>
     const fmtDate = d => d.toISOString().slice(0,10);
-    const weekStart = date => {
-      const d = new Date(date);
-      d.setDate(d.getDate() - d.getDay());
-      d.setHours(0,0,0,0);
-      return d;
-    };
+    const weekStart = date => { const d = new Date(date); d.setDate(d.getDate() - d.getDay()); d.setHours(0,0,0,0); return d; };
     const load = () => JSON.parse(localStorage.getItem('withdrawals') || '[]');
     const save = data => localStorage.setItem('withdrawals', JSON.stringify(data));
 
@@ -157,6 +176,7 @@
     const productInput = $('productInput');
     const qtyInput = $('qtyInput');
     const selectedInfo = $('selectedInfo');
+    const suggestions = $('suggestions');
     const todayList = $('todayList');
     const todayStr = $('todayStr');
     const periodStr = $('periodStr');
@@ -177,16 +197,26 @@
 
     productInput.addEventListener('input', () => {
       const q = productInput.value.toLowerCase();
-      if (!q) return selectedInfo.style.display = 'none';
-      selectedItem = items.find(it =>
-        it.code?.toLowerCase() === q || it.description?.toLowerCase().includes(q)
-      );
-      if (selectedItem) {
-        selectedInfo.textContent = `Selecionado: ${selectedItem.description} (${selectedItem.code}) — Estoque: ${selectedItem.stock} em ${selectedItem.location}`;
-        selectedInfo.style.display = 'block';
-      } else {
-        selectedInfo.style.display = 'none';
-      }
+      suggestions.innerHTML = '';
+      if (!q) return suggestions.style.display = 'none';
+      const matches = items.filter(it =>
+        it.code?.toLowerCase().includes(q) ||
+        it.description?.toLowerCase().includes(q)
+      ).slice(0, 10);
+
+      matches.forEach(it => {
+        const div = document.createElement('div');
+        div.textContent = `${it.code} - ${it.description}`;
+        div.onclick = () => {
+          selectedItem = it;
+          productInput.value = it.code;
+          suggestions.style.display = 'none';
+          selectedInfo.textContent = `${it.description} — Localização: ${it.location}`;
+          selectedInfo.style.display = 'block';
+        };
+        suggestions.appendChild(div);
+      });
+      suggestions.style.display = matches.length ? 'block' : 'none';
     });
 
     $('addBtn').addEventListener('click', () => {
@@ -205,48 +235,29 @@
       todayStr.textContent = fmtDate(today);
       todayList.innerHTML = '';
       const todayEntries = withdrawals.filter(w => fmtDate(new Date(w.date)) === fmtDate(today));
-      if (!todayEntries.length) {
-        todayList.innerHTML = '<li>Nenhuma retirada hoje.</li>';
-      } else {
-        todayEntries.forEach(w => {
-          const li = document.createElement('li');
-          li.textContent = `${w.qty}× ${w.desc} (${w.code})`;
-          todayList.appendChild(li);
-        });
-      }
+      todayList.innerHTML = todayEntries.length
+        ? todayEntries.map(w => `<li>${w.qty}× ${w.desc} (${w.code})</li>`).join('')
+        : '<li>Nenhuma retirada hoje.</li>';
 
       periodStr.textContent = `${fmtDate(start)} → ${fmtDate(end)}`;
-      const weekEntries = withdrawals.filter(w => {
-        const d = new Date(w.date);
-        return d >= start && d <= end;
-      });
-
+      const weekEntries = withdrawals.filter(w => new Date(w.date) >= start && new Date(w.date) <= end);
       const totals = {};
       weekEntries.forEach(w => {
         if (!totals[w.code]) totals[w.code] = { desc: w.desc, qty: 0 };
         totals[w.code].qty += w.qty;
       });
 
-      weekTableBody.innerHTML = '';
       const codes = Object.keys(totals);
-      if (!codes.length) {
-        weekTableBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Nenhuma baixa esta semana.</td></tr>';
-      } else {
-        codes.forEach(code => {
-          const row = document.createElement('tr');
-          row.innerHTML = `<td>${code}</td><td>${totals[code].desc}</td><td>${totals[code].qty}</td>`;
-          weekTableBody.appendChild(row);
-        });
-      }
+      weekTableBody.innerHTML = codes.length
+        ? codes.map(code => `<tr><td>${code}</td><td>${totals[code].desc}</td><td>${totals[code].qty}</td></tr>`).join('')
+        : '<tr><td colspan="3" style="text-align:center;">Nenhuma baixa esta semana.</td></tr>';
 
-      csvBtn.disabled = codes.length === 0;
-      clearBtn.disabled = codes.length === 0;
+      csvBtn.disabled = !codes.length;
+      clearBtn.disabled = !codes.length;
     }
 
     csvBtn.addEventListener('click', () => {
-      const weekEntries = withdrawals.filter(w => {
-        const d = new Date(w.date); return d >= start && d <= end;
-      });
+      const weekEntries = withdrawals.filter(w => new Date(w.date) >= start && new Date(w.date) <= end);
       const totals = {};
       weekEntries.forEach(w => {
         totals[w.code] = (totals[w.code] || 0) + w.qty;
