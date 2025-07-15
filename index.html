@@ -112,7 +112,7 @@
       (it.description && it.description.toLowerCase().includes(q))
     );
     if (selectedItem) {
-      selectedInfo.textContent = `Selecionado: ${selectedItem.description} (${selectedItem.code}) \n Quantidade sistêmica: ${selectedItem.stock} \n Localização: ${selectedItem.location}`;
+      selectedInfo.textContent = `Selecionado: ${selectedItem.description} (${selectedItem.code}) \n Localização: ${selectedItem.location}`;
       selectedInfo.classList.remove('hidden');
     } else {
       selectedInfo.classList.add('hidden');
