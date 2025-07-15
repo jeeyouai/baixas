@@ -152,6 +152,7 @@
         <tr>
           <th>Codigo</th>
           <th>Descricao</th>
+          <th>Localizacao</th>
           <th>Baixa</th>
         </tr>
       </thead>
@@ -252,8 +253,8 @@
 
       const codes = Object.keys(totals);
       weekTableBody.innerHTML = codes.length
-        ? codes.map(code => `<tr><td>${code}</td><td>${totals[code].desc}</td><td>${totals[code].qty}</td></tr>`).join('')
-        : '<tr><td colspan="3" style="text-align:center;">Nenhuma baixa esta semana.</td></tr>';
+        ? codes.map(code => `<tr><td>${code}</td><td>${totals[code].desc}</td><td>${totals[code].location}</td><td>${totals[code].qty}</td></tr>`).join('')
+        : '<tr><td colspan="4" style="text-align:center;">Nenhuma baixa esta semana.</td></tr>';
 
       csvBtn.disabled = !codes.length;
       clearBtn.disabled = !codes.length;
@@ -274,13 +275,26 @@
       ];
       const ws = XLSX.utils.aoa_to_sheet(ws_data);
 
-      // Estilo e largura das colunas
-      ws['!cols'] = [
-        { wch: 20 },
-        { wch: 80 },
-        { wch: 20 },
-        { wch: 20 }
-      ];
+      ws['!cols'] = [ { wch: 20 }, { wch: 80 }, { wch: 20 }, { wch: 20 } ];
+
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+          if (!cell) continue;
+          cell.s = {
+            font: { bold: R === 0 },
+            alignment: { vertical: "center", horizontal: "center" },
+            fill: R === 0 ? { fgColor: { rgb: "D3D3D3" } } : undefined,
+            border: {
+              top: { style: "thin", color: { auto: 1 } },
+              bottom: { style: "thin", color: { auto: 1 } },
+              left: { style: "thin", color: { auto: 1 } },
+              right: { style: "thin", color: { auto: 1 } }
+            }
+          };
+        }
+      }
 
       XLSX.utils.book_append_sheet(wb, ws, 'BAIXAS');
       XLSX.writeFile(wb, `BAIXAS_${fmtDate(start)}_A_${fmtDate(end)}.xlsx`);
