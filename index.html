@@ -1,0 +1,201 @@
+<!-- Salve este arquivo como index.html no mesmo diretório de csvjson.json -->
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Controle de Baixas Semanal</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind via CDN (opcional – remova se preferir CSS próprio) -->
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.4/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="p-4 max-w-4xl mx-auto">
+  <h1 class="text-2xl font-bold text-center mb-6">Controle de Baixas (Dom‑Sáb)</h1>
+
+  <!-- Formulário principal -->
+  <div id="form" class="grid gap-2 md:grid-cols-[2fr_1fr_auto] items-end mb-6">
+    <div>
+      <label class="block text-sm font-medium">Produto</label>
+      <input id="productInput" type="text" placeholder="Código ou parte da descrição…" class="w-full border rounded p-2">
+      <p id="selectedInfo" class="text-sm text-gray-600 mt-1 hidden"></p>
+    </div>
+    <div>
+      <label class="block text-sm font-medium">Quantidade</label>
+      <input id="qtyInput" type="number" min="1" value="1" class="w-full border rounded p-2">
+    </div>
+    <button id="addBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded">Adicionar</button>
+  </div>
+
+  <!-- Lista de hoje -->
+  <div class="mb-6">
+    <h2 class="text-lg font-semibold mb-2">Retiradas de hoje (<span id="todayStr"></span>)</h2>
+    <ul id="todayList" class="border rounded divide-y max-h-56 overflow-y-auto"></ul>
+  </div>
+
+  <!-- Resumo semanal -->
+  <div class="mb-6">
+    <h2 class="text-lg font-semibold">Resumo da semana <span id="periodStr"></span></h2>
+    <table class="w-full text-sm border rounded mb-2" id="weekTable">
+      <thead class="bg-gray-100">
+        <tr>
+          <th class="p-2 border">Código</th>
+          <th class="p-2 border">Descrição</th>
+          <th class="p-2 border">Total</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <div class="flex gap-2">
+      <button id="csvBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">Gerar CSV da Semana</button>
+      <button id="clearBtn" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded">Limpar Semana</button>
+    </div>
+  </div>
+
+  <script>
+  // ---------- Helpers ----------
+  function fmtDate(d){return d.toISOString().slice(0,10);} // AAAA-MM-DD
+  function weekStart(date){
+    const d=new Date(date);
+    const day=d.getDay(); // 0 = domingo
+    d.setHours(0,0,0,0);
+    d.setDate(d.getDate()-day);
+    return d;
+  }
+  function loadWithdrawals(){return JSON.parse(localStorage.getItem('withdrawals')||'[]');}
+  function saveWithdrawals(arr){localStorage.setItem('withdrawals',JSON.stringify(arr));}
+
+  // ---------- Estado ----------
+  let items=[];
+  let selectedItem=null;
+  const withdrawals=loadWithdrawals();
+  const today=new Date();
+  const start=weekStart(today);
+  const end=new Date(start);end.setDate(start.getDate()+6);
+
+  // ---------- Elementos DOM ----------
+  const productInput=document.getElementById('productInput');
+  const qtyInput=document.getElementById('qtyInput');
+  const selectedInfo=document.getElementById('selectedInfo');
+  const todayList=document.getElementById('todayList');
+  const todayStr=document.getElementById('todayStr');
+  const periodStr=document.getElementById('periodStr');
+  const weekTableBody=document.querySelector('#weekTable tbody');
+  const csvBtn=document.getElementById('csvBtn');
+  const clearBtn=document.getElementById('clearBtn');
+
+  // ---------- Carregar catálogo ----------
+  fetch('csvjson.json')
+    .then(r=>r.json())
+    .then(data=>{items=data;})
+    .catch(err=>console.error('Erro ao carregar csvjson.json',err));
+
+  // ---------- Busca de produtos ----------
+  productInput.addEventListener('input',()=>{
+    const q=productInput.value.trim().toLowerCase();
+    if(!q){selectedItem=null;selectedInfo.classList.add('hidden');return;}
+    selectedItem=items.find(it=>
+      it.code.toLowerCase()===q ||
+      it.description.toLowerCase().includes(q)
+    );
+    if(selectedItem){
+      selectedInfo.textContent=`Selecionado: ${selectedItem.description} (${selectedItem.code})`;
+      selectedInfo.classList.remove('hidden');
+    }else{
+      selectedInfo.classList.add('hidden');
+    }
+  });
+
+  // ---------- Adicionar retirada ----------
+  document.getElementById('addBtn').addEventListener('click',()=>{
+    const qty=parseInt(qtyInput.value,10);
+    if(!selectedItem||!qty||qty<=0){return;}
+    withdrawals.push({code:selectedItem.code,desc:selectedItem.description,qty,date:Date.now()});
+    saveWithdrawals(withdrawals);
+    selectedItem=null;productInput.value='';selectedInfo.classList.add('hidden');qtyInput.value=1;
+    render();
+  });
+
+  // ---------- Renderização ----------
+  function render(){
+    // Hoje
+    todayStr.textContent=fmtDate(today);
+    todayList.innerHTML='';
+    const todayEntries=withdrawals.filter(w=>fmtDate(new Date(w.date))===fmtDate(today));
+    if(todayEntries.length===0){
+      todayList.innerHTML='<li class="p-2 text-sm text-gray-500">Nenhuma retirada registrada hoje.</li>';
+    }else{
+      todayEntries.forEach(w=>{
+        const li=document.createElement('li');
+        li.className='p-2 text-sm';
+        li.textContent=`${w.qty}× ${w.desc} (${w.code})`;
+        todayList.appendChild(li);
+      });
+    }
+
+    // Resumo semanal
+    periodStr.textContent=`${fmtDate(start)} → ${fmtDate(end)}`;
+    weekTableBody.innerHTML='';
+    const weekEntries=withdrawals.filter(w=>{
+      const d=new Date(w.date);return d>=start&&d<=end;
+    });
+    const totals={};
+    weekEntries.forEach(w=>{
+      if(!totals[w.code])totals[w.code]={desc:w.desc,qty:0};
+      totals[w.code].qty+=Number(w.qty);
+    });
+    const codes=Object.keys(totals);
+    if(codes.length===0){
+      weekTableBody.innerHTML='<tr><td colspan="3" class="p-2 text-center text-gray-500">Nenhuma baixa esta semana.</td></tr>';
+    }else{
+      codes.forEach(code=>{
+        const tr=document.createElement('tr');
+        tr.innerHTML=`<td class=\"p-2 border\">${code}</td><td class=\"p-2 border\">${totals[code].desc}</td><td class=\"p-2 border text-center\">${totals[code].qty}</td>`;
+        weekTableBody.appendChild(tr);
+      });
+    }
+    csvBtn.disabled=codes.length===0;
+    clearBtn.disabled=codes.length===0;
+  }
+  render();
+
+  // ---------- Gerar CSV ----------
+  csvBtn.addEventListener('click',()=>{
+    const weekEntries=withdrawals.filter(w=>{
+      const d=new Date(w.date);return d>=start&&d<=end;
+    });
+    const sums={};
+    weekEntries.forEach(w=>{
+      sums[w.code]=(sums[w.code]||0)+Number(w.qty);
+      sums[`__desc_${w.code}`]=w.desc;
+    });
+    const headers=['Código','Descrição','Total na Semana',`Período: ${fmtDate(start)} a ${fmtDate(end)}`];
+    const rows=Object.keys(sums).filter(k=>!k.startsWith('__desc_')).map(code=>[code,sums[`__desc_${code}`],sums[code]]);
+    const csv=[headers.join(';'),...rows.map(r=>r.join(';'))].join('\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download=`baixas_${fmtDate(start)}_to_${fmtDate(end)}.csv`;a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  // ---------- Limpar semana ----------
+  clearBtn.addEventListener('click',()=>{
+    const remain=withdrawals.filter(w=>new Date(w.date)<start);
+    localStorage.setItem('withdrawals',JSON.stringify(remain));
+    withdrawals.length=0;withdrawals.push(...remain);
+    render();
+  });
+
+  // ---------- Geração automática domingo 00h0x ----------
+  (function autoGen(){
+    const now=new Date();
+    if(now.getDay()===0&&now.getHours()===0&&now.getMinutes()<10){
+      const flag=`reportDone_${fmtDate(start)}`;
+      if(!localStorage.getItem(flag)){
+        csvBtn.click();
+        localStorage.setItem(flag,'true');
+      }
+    }
+  })();
+  </script>
+</body>
+</html>
