@@ -83,7 +83,7 @@
   const clearBtn=document.getElementById('clearBtn');
 
   // ---------- Carregar catálogo ----------
-  fetch('csvjson.json')
+  fetch('baixas.json')
     .then(r=>r.json())
     .then(data=>{items=data;})
     .catch(err=>console.error('Erro ao carregar csvjson.json',err));
