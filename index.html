@@ -95,13 +95,15 @@
     }
 
     th, td {
-      border: 1px solid #ccc;
+      border: 1px solid #000;
       padding: 8px;
       text-align: left;
     }
 
     th {
-      background-color: #f5f5f5;
+      background-color: #d3d3d3;
+      font-weight: bold;
+      text-transform: uppercase;
     }
 
     ul {
@@ -130,7 +132,7 @@
 
     <label for="productInput">Produto</label>
     <div style="position: relative;">
-      <input id="productInput" type="text" placeholder="Código (MAN-****) ou parte da descrição…">
+      <input id="productInput" type="text" placeholder="Codigo (MAN-****) ou parte da descricao…">
       <div id="suggestions" class="dropdown"></div>
     </div>
     <p id="selectedInfo" class="info" style="display: none;"></p>
@@ -147,9 +149,9 @@
     <table>
       <thead>
         <tr>
-          <th>Código</th>
-          <th>Descrição</th>
-          <th>Total</th>
+          <th>Codigo</th>
+          <th>Descricao</th>
+          <th>Baixa</th>
         </tr>
       </thead>
       <tbody id="weekTableBody"></tbody>
@@ -211,7 +213,7 @@
           selectedItem = it;
           productInput.value = it.code;
           suggestions.style.display = 'none';
-          selectedInfo.textContent = `${it.description} — Localização: ${it.location}`;
+          selectedInfo.textContent = `${it.description} — Localizacao: ${it.location}`;
           selectedInfo.style.display = 'block';
         };
         suggestions.appendChild(div);
@@ -222,7 +224,7 @@
     $('addBtn').addEventListener('click', () => {
       const qty = parseInt(qtyInput.value);
       if (!selectedItem || !qty || qty <= 0) return;
-      withdrawals.push({ code: selectedItem.code, desc: selectedItem.description, qty, date: Date.now() });
+      withdrawals.push({ code: selectedItem.code, desc: selectedItem.description, location: selectedItem.location, qty, date: Date.now() });
       save(withdrawals);
       selectedItem = null;
       productInput.value = '';
@@ -243,7 +245,7 @@
       const weekEntries = withdrawals.filter(w => new Date(w.date) >= start && new Date(w.date) <= end);
       const totals = {};
       weekEntries.forEach(w => {
-        if (!totals[w.code]) totals[w.code] = { desc: w.desc, qty: 0 };
+        if (!totals[w.code]) totals[w.code] = { desc: w.desc, location: w.location, qty: 0 };
         totals[w.code].qty += w.qty;
       });
 
@@ -260,19 +262,24 @@
       const weekEntries = withdrawals.filter(w => new Date(w.date) >= start && new Date(w.date) <= end);
       const totals = {};
       weekEntries.forEach(w => {
-        totals[w.code] = (totals[w.code] || 0) + w.qty;
-        totals[`desc_${w.code}`] = w.desc;
+        if (!totals[w.code]) totals[w.code] = { desc: w.desc, location: w.location, qty: 0 };
+        totals[w.code].qty += w.qty;
       });
-      const headers = ['Código', 'Descrição', 'Total na Semana'];
-      const rows = Object.keys(totals)
-        .filter(k => !k.startsWith('desc_'))
-        .map(code => [code, totals[`desc_${code}`], totals[code]]);
+
+      const headers = ['CODIGO','DESCRICAO','LOCALIZACAO','BAIXA'];
+      const rows = Object.keys(totals).map(code => [
+        code,
+        totals[code].desc,
+        totals[code].location,
+        totals[code].qty
+      ]);
+
       const csv = [headers.join(';'), ...rows.map(r => r.join(';'))].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `baixas_${fmtDate(start)}_a_${fmtDate(end)}.csv`;
+      a.download = `BAIXAS_${fmtDate(start)}_A_${fmtDate(end)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     });
