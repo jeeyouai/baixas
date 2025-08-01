@@ -14,7 +14,6 @@
       display: flex;
       justify-content: center;
     }
-
     .container {
       background-color: #fff;
       padding: 30px;
@@ -23,20 +22,18 @@
       width: 100%;
       max-width: 800px;
     }
-
     h1, h2 {
       text-align: center;
       color: #003C41;
     }
-
     label {
       font-weight: bold;
       display: block;
       margin-bottom: 5px;
     }
-
     input[type="text"],
-    input[type="number"] {
+    input[type="number"],
+    select {
       width: 100%;
       padding: 10px;
       margin-bottom: 10px;
@@ -44,7 +41,6 @@
       border: 1px solid #ccc;
       box-sizing: border-box;
     }
-
     .dropdown {
       border: 1px solid #ccc;
       border-top: none;
@@ -56,16 +52,13 @@
       z-index: 1000;
       display: none;
     }
-
     .dropdown div {
       padding: 8px;
       cursor: pointer;
     }
-
     .dropdown div:hover {
       background-color: #f0f0f0;
     }
-
     button {
       background-color: #005A4B;
       color: white;
@@ -76,37 +69,30 @@
       font-size: 16px;
       margin-top: 10px;
     }
-
     button:hover {
       background-color: #003C41;
     }
-
     .btn-danger {
       background-color: #B00020;
     }
-
     .btn-danger:hover {
       background-color: #7a0016;
     }
-
     table {
       width: 100%;
       border-collapse: collapse;
       margin-top: 10px;
     }
-
     th, td {
       border: 1px solid #000;
       padding: 8px;
       text-align: left;
     }
-
     th {
       background-color: #d3d3d3;
       font-weight: bold;
       text-transform: uppercase;
     }
-
     ul {
       list-style: none;
       padding-left: 0;
@@ -114,22 +100,22 @@
       overflow-y: auto;
       margin-bottom: 10px;
     }
-
     .info {
       font-size: 14px;
       color: #000;
       margin-top: 5px;
-    }
-
-    .disabled {
-      background-color: #aaa !important;
-      cursor: not-allowed;
     }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Controle de Baixas (Dom‑Sáb)</h1>
+
+    <label for="cammSelect">Selecione CAMM</label>
+    <select id="cammSelect">
+      <option value="01">CAMM 01</option>
+      <option value="02">CAMM 02</option>
+    </select>
 
     <label for="productInput">Produto</label>
     <div style="position: relative;">
@@ -171,6 +157,8 @@
 
     let items = [];
     let selectedItem = null;
+    let selectedCamm = "01";
+    let deposito = "";
     const withdrawals = load();
     const today = new Date();
     const start = weekStart(today);
@@ -188,13 +176,18 @@
     const csvBtn = $('csvBtn');
     const clearBtn = $('clearBtn');
 
+    $('cammSelect').addEventListener('change', (e) => {
+      selectedCamm = e.target.value;
+      deposito = selectedCamm === "02" ? "BIOPRCWB03" : "";
+    });
+
     fetch('baixas.json')
       .then(r => r.json())
       .then(data => {
         items = data.map(it => ({
           code: it["Número do item"],
           description: it["Nome do produto"],
-          location: it["Localização"],
+          location: it["Localização"] || "N/A",
           stock: it["Quantidade física disponível"]
         }));
       });
@@ -253,8 +246,40 @@
 
       const codes = Object.keys(totals);
       weekTableBody.innerHTML = codes.length
-        ? codes.map(code => `<tr><td>${code}</td><td>${totals[code].desc}</td><td>${totals[code].location}</td><td>${totals[code].qty}</td></tr>`).join('')
+        ? codes.map(code => `
+            <tr>
+              <td>${code}</td>
+              <td>${totals[code].desc}</td>
+              <td>${totals[code].location}</td>
+              <td>
+                <input type="number" min="0" value="${totals[code].qty}" 
+                       data-code="${code}" style="width:60px;">
+              </td>
+            </tr>
+          `).join('')
         : '<tr><td colspan="4" style="text-align:center;">Nenhuma baixa esta semana.</td></tr>';
+
+      document.querySelectorAll('#weekTableBody input').forEach(input => {
+        input.addEventListener('change', e => {
+          const code = e.target.dataset.code;
+          const newQty = parseInt(e.target.value);
+
+          for (let i = withdrawals.length - 1; i >= 0; i--) {
+            if (withdrawals[i].code === code &&
+                new Date(withdrawals[i].date) >= start &&
+                new Date(withdrawals[i].date) <= end) {
+              withdrawals.splice(i, 1);
+            }
+          }
+
+          if (newQty > 0) {
+            withdrawals.push({ code, desc: totals[code].desc, location: totals[code].location, qty: newQty, date: Date.now() });
+          }
+
+          save(withdrawals);
+          render();
+        });
+      });
 
       csvBtn.disabled = !codes.length;
       clearBtn.disabled = !codes.length;
@@ -270,32 +295,19 @@
 
       const wb = XLSX.utils.book_new();
       const ws_data = [
-        ['CODIGO','DESCRICAO','LOCALIZACAO','BAIXA'],
-        ...Object.entries(totals).map(([code, val]) => [code, val.desc, val.location, val.qty])
+        ['DIA','NÚMERO DO ITEM','NOME DO PRODUTO','SITE','DEPÓSITO','QUANTIDADE','QUANTIDADE DE UNIDADES','LOCALIZAÇÃO'],
+        ...Object.entries(totals).map(([code, val]) => [
+          fmtDate(today),
+          code,
+          val.desc,
+          selectedCamm === "01" ? "CAMM 01" : "CAMM 02",
+          selectedCamm === "02" ? "BIOPRCWB03" : "",
+          `-${val.qty}`,
+          `-${val.qty}`,
+          val.location
+        ])
       ];
       const ws = XLSX.utils.aoa_to_sheet(ws_data);
-
-      ws['!cols'] = [ { wch: 20 }, { wch: 80 }, { wch: 20 }, { wch: 20 } ];
-
-      const range = XLSX.utils.decode_range(ws['!ref']);
-      for (let R = range.s.r; R <= range.e.r; ++R) {
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-          const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })];
-          if (!cell) continue;
-          cell.s = {
-            font: { bold: R === 0 },
-            alignment: { vertical: "center", horizontal: "center" },
-            fill: R === 0 ? { fgColor: { rgb: "D3D3D3" } } : undefined,
-            border: {
-              top: { style: "thin", color: { auto: 1 } },
-              bottom: { style: "thin", color: { auto: 1 } },
-              left: { style: "thin", color: { auto: 1 } },
-              right: { style: "thin", color: { auto: 1 } }
-            }
-          };
-        }
-      }
-
       XLSX.utils.book_append_sheet(wb, ws, 'BAIXAS');
       XLSX.writeFile(wb, `BAIXAS_${fmtDate(start)}_A_${fmtDate(end)}.xlsx`);
     });
@@ -307,17 +319,6 @@
       withdrawals.push(...rest);
       render();
     });
-
-    (function autoGen() {
-      const now = new Date();
-      if (now.getDay() === 0 && now.getHours() === 0 && now.getMinutes() < 10) {
-        const flag = `reportDone_${fmtDate(start)}`;
-        if (!localStorage.getItem(flag)) {
-          csvBtn.click();
-          localStorage.setItem(flag, 'true');
-        }
-      }
-    })();
 
     render();
   </script>
