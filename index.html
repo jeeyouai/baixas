@@ -175,20 +175,26 @@
     const csvBtn = $('csvBtn');
     const clearBtn = $('clearBtn');
 
+    function loadItems() {
+      const file = selectedCamm === "01" ? "Planilha Site 01.json" : "baixas.json";
+      fetch(file)
+        .then(r => r.json())
+        .then(data => {
+          items = data.map(it => ({
+            code: it["Número do item"],
+            description: it["Nome do produto"],
+            location: it["Localização"] || "N/A",
+            stock: it["Quantidade física disponível"]
+          }));
+        });
+    }
+
     $('cammSelect').addEventListener('change', (e) => {
       selectedCamm = e.target.value;
+      loadItems();
     });
 
-    fetch('baixas.json')
-      .then(r => r.json())
-      .then(data => {
-        items = data.map(it => ({
-          code: it["Número do item"],
-          description: it["Nome do produto"],
-          location: it["Localização"] || "N/A",
-          stock: it["Quantidade física disponível"]
-        }));
-      });
+    loadItems(); // carrega inicial
 
     productInput.addEventListener('input', () => {
       const q = productInput.value.toLowerCase();
@@ -298,8 +304,8 @@
           let site = "";
           let deposito = "";
           if (selectedCamm === "01") {
-            site = "CAMM 01";
-            deposito = ""; // vazio para CAMM 01
+            site = "TB01";
+            deposito = "MANTCWB1";
           } else if (selectedCamm === "02") {
             site = "BIOPRCWB03";
             deposito = "MANTCWB2";
