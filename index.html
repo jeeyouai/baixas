@@ -158,7 +158,6 @@
     let items = [];
     let selectedItem = null;
     let selectedCamm = "01";
-    let deposito = "";
     const withdrawals = load();
     const today = new Date();
     const start = weekStart(today);
@@ -178,7 +177,6 @@
 
     $('cammSelect').addEventListener('change', (e) => {
       selectedCamm = e.target.value;
-      deposito = selectedCamm === "02" ? "BIOPRCWB03" : "";
     });
 
     fetch('baixas.json')
@@ -296,16 +294,27 @@
       const wb = XLSX.utils.book_new();
       const ws_data = [
         ['DIA','NÚMERO DO ITEM','NOME DO PRODUTO','SITE','DEPÓSITO','QUANTIDADE','QUANTIDADE DE UNIDADES','LOCALIZAÇÃO'],
-        ...Object.entries(totals).map(([code, val]) => [
-          fmtDate(today),
-          code,
-          val.desc,
-          selectedCamm === "01" ? "CAMM 01" : "BIOPRCWB03",
-          selectedCamm === "02" ? "MANTCWB2" : "",
-          `-${val.qty}`,
-          `-${val.qty}`,
-          val.location
-        ])
+        ...Object.entries(totals).map(([code, val]) => {
+          let site = "";
+          let deposito = "";
+          if (selectedCamm === "01") {
+            site = "CAMM 01";
+            deposito = ""; // vazio para CAMM 01
+          } else if (selectedCamm === "02") {
+            site = "BIOPRCWB03";
+            deposito = "MANTCWB2";
+          }
+          return [
+            fmtDate(today),
+            code,
+            val.desc,
+            site,
+            deposito,
+            `-${val.qty}`,
+            `-${val.qty}`,
+            val.location
+          ];
+        })
       ];
       const ws = XLSX.utils.aoa_to_sheet(ws_data);
       XLSX.utils.book_append_sheet(wb, ws, 'BAIXAS');
